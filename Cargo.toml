@@ -1,0 +1,16 @@
+[package]
+name = "RandoRank"
+version = "0.1.0"
+authors = ["cassidoxa <cassidymoen@gmx.com>"]
+edition = "2018"
+
+[lib]
+name = "randorank"
+crate-type = ["cdylib"]
+
+[dependencies.pyo3]
+version = "0.8.5"
+features = ["extension-module"]
+
+[dependencies]
+chrono = "0.4.10"

@@ -81,3 +81,11 @@ test
 venv/
 *.xlsx
 *.sql
+debugbuild.sh
+
+#Added by cargo
+#
+#already existing elements were commented out
+
+/target
+#Cargo.lock
