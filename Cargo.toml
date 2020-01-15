@@ -8,9 +8,12 @@ edition = "2018"
 name = "randorank"
 crate-type = ["cdylib"]
 
-[dependencies.pyo3]
-version = "0.8.5"
-features = ["extension-module"]
-
 [dependencies]
 chrono = "0.4.10"
+pyo3 = "0.8.5"
+
+# for rust tests
+# cargo test --no-default-features
+[features]
+extension-module = ["pyo3/extension-module"]
+default = ["extension-module"]

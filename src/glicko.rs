@@ -11,16 +11,6 @@ const _DRAW: f64 = 0.5;
 const _LOSS: f64 = 0.0;
 const EPSILON: f64 = 0.000_000_001;
 
-static REQUIRED_CONSTANTS: [&'static str; 7] = [
-    "tau",
-    "multi_slope",
-    "multi_cutoff",
-    "norm_factor",
-    "initial_rating",
-    "initial_deviation",
-    "initial_volatility",
-];
-
 struct GlickoConstants {
     glicko_tau: f64,
     multi_slope: f64,
@@ -124,21 +114,7 @@ impl Period {
     }
 
     fn set_constants(&mut self, constants: HashMap<&str, f64>) -> PyResult<()> {
-        for key in REQUIRED_CONSTANTS.iter() {
-            if constants.contains_key(key) == false {
-                return Err(GlickoError::py_err("Not all glicko constants in dict"));
-            }
-        }
-
-        for key in constants.keys() {
-            if REQUIRED_CONSTANTS.iter().find(|&x| x == key).is_none() {
-                return Err(GlickoError::py_err(format!(
-                    "Unknown dict key passed to method: {}",
-                    key
-                )));
-            }
-        }
-
+        validate_constants(&constants)?;
         let new_constants: GlickoConstants = GlickoConstants {
             glicko_tau: constants["tau"],
             multi_slope: constants["multi_slope"],
@@ -148,8 +124,8 @@ impl Period {
             initial_deviation: constants["initial_deviation"],
             initial_volatility: constants["initial_volatility"],
         };
-
         self.glicko_constants = new_constants;
+
         Ok(())
     }
 
@@ -168,10 +144,8 @@ impl Period {
         Ok(constants)
     }
 
-    fn add_previous_players(
-        &mut self,
-        players: HashMap<String, HashMap<String, f64>>,
-    ) -> PyResult<()> {
+    fn add_players(&mut self, players: HashMap<String, HashMap<String, f64>>) -> PyResult<()> {
+        validate_players(&players)?;
         for p in players.keys() {
             let glicko = GlickoRating {
                 rating: players[p]["rating"],
@@ -190,8 +164,27 @@ impl Period {
 
         Ok(())
     }
+    // take one race, split into 1v1s,
+    fn add_race(&mut self, race: HashMap<String, u32>) -> PyResult<()> {
+        // add any new racers with default values
+        let new_racers: Vec<&String> = race
+            .keys()
+            .filter(|x| self.players.contains_key(x.as_str()) == false)
+            .collect();
+        println!("hello {:?}", new_racers);
+        if new_racers.is_empty() == false {
+            new_racers.iter().for_each(|x| self.new_unrated(x));
+        }
+        // normalize race
+        // create 1v1s with time and normed score, add to Vec owned by player struct
+        Ok(())
+    }
+    //fn rank_players(&self) -> HashMap<HashMap<&str, f64>>{}
+}
 
-    fn new_unrated(&mut self, name: String) -> PyResult<()> {
+// private methods not accessible from python
+impl Period {
+    fn new_unrated(&mut self, name: &str) {
         let initial_glicko = GlickoRating {
             rating: self.glicko_constants.initial_rating,
             deviation: self.glicko_constants.initial_deviation,
@@ -203,10 +196,53 @@ impl Period {
             delta: 0.0,
             races: Vec::with_capacity(20),
         };
-        self.players.insert(name, new_player);
-        Ok(())
+        self.players.insert(name.to_string(), new_player);
+    }
+}
+
+fn validate_constants(constants: &HashMap<&str, f64>) -> PyResult<()> {
+    const REQUIRED_CONSTANTS: [&str; 7] = [
+        "tau",
+        "multi_slope",
+        "multi_cutoff",
+        "norm_factor",
+        "initial_rating",
+        "initial_deviation",
+        "initial_volatility",
+    ];
+    if REQUIRED_CONSTANTS
+        .iter()
+        .all(|&k| constants.contains_key(k))
+        == false
+    {
+        return Err(GlickoError::py_err(
+            "Not all Glicko constants found in dict",
+        ));
+    }
+    if constants.keys().all(|x| REQUIRED_CONSTANTS.contains(x)) == false {
+        return Err(GlickoError::py_err(
+            "Malformed constants dict passed to method",
+        ));
     }
 
-    //fn add_race() {}
-    //fn rank_players() {}
+    Ok(())
+}
+
+fn validate_players(players: &HashMap<String, HashMap<String, f64>>) -> PyResult<()> {
+    const REQUIRED_KEYS: [&str; 5] = ["rating", "deviation", "volatility", "variance", "delta"];
+
+    for m in players.values() {
+        if REQUIRED_KEYS.iter().all(|&k| m.contains_key(k)) == false {
+            return Err(GlickoError::py_err(
+                "Not all player attributes found in dict",
+            ));
+        }
+        if m.keys().all(|x| REQUIRED_KEYS.contains(&x.as_str())) == false {
+            return Err(GlickoError::py_err(
+                "Malformed player dict passed to method",
+            ));
+        }
+    }
+
+    Ok(())
 }
