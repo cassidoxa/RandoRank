@@ -3,7 +3,7 @@ use std::{collections::HashMap, f64::NAN as NaN};
 use chrono::NaiveDateTime;
 use pyo3::prelude::*;
 
-use crate::GlickoError;
+use crate::{math, GlickoError};
 
 const GLICKO_CONVERSION: f64 = 173.7178;
 const _WIN: f64 = 1.0;
@@ -165,17 +165,11 @@ impl Period {
         Ok(())
     }
     // take one race, split into 1v1s,
-    fn add_race(&mut self, race: HashMap<String, u32>) -> PyResult<()> {
+    fn add_race(&mut self, race: HashMap<String, Option<u32>>) -> PyResult<()> {
+        validate_race(&race)?;
         // add any new racers with default values
-        let new_racers: Vec<&String> = race
-            .keys()
-            .filter(|x| self.players.contains_key(x.as_str()) == false)
-            .collect();
-        println!("hello {:?}", new_racers);
-        if new_racers.is_empty() == false {
-            new_racers.iter().for_each(|x| self.new_unrated(x));
-        }
-        // normalize race
+        self.add_new_players(&race)?;
+        let normed_race = math::normalize_race(&race, &self.glicko_constants.norm_factor);
         // create 1v1s with time and normed score, add to Vec owned by player struct
         Ok(())
     }
@@ -197,6 +191,18 @@ impl Period {
             races: Vec::with_capacity(20),
         };
         self.players.insert(name.to_string(), new_player);
+    }
+
+    fn add_new_players(&mut self, race: &HashMap<String, Option<u32>>) -> Result<(), GlickoError> {
+        let new_racers: Vec<&String> = race
+            .keys()
+            .filter(|x| self.players.contains_key(x.as_str()) == false)
+            .collect();
+        if new_racers.is_empty() == false {
+            new_racers.iter().for_each(|x| self.new_unrated(x));
+        }
+
+        Ok(())
     }
 }
 
@@ -242,6 +248,31 @@ fn validate_players(players: &HashMap<String, HashMap<String, f64>>) -> PyResult
                 "Malformed player dict passed to method",
             ));
         }
+    }
+
+    Ok(())
+}
+
+fn validate_race(race: &HashMap<String, Option<u32>>) -> PyResult<()> {
+    // confirm that the race has:
+    // 1. At least two players
+    // 2. At least one non-forfeiting player
+
+    if race.len() < 2 {
+        return Err(GlickoError::py_err(
+            "Invalid race passed to method: Less than two racers",
+        ));
+    }
+
+    let times: Vec<u32> = race
+        .values()
+        .filter(|x| x.is_some())
+        .map(|&x| x.unwrap())
+        .collect();
+    if times.len() < 1 {
+        return Err(GlickoError::py_err(
+            "Invalid race passed to method: Less than one finisher",
+        ));
     }
 
     Ok(())

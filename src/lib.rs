@@ -2,6 +2,7 @@ use pyo3::create_exception;
 use pyo3::prelude::*;
 
 mod glicko;
+mod math;
 
 #[pymodule]
 fn randorank(_py: Python, m: &PyModule) -> PyResult<()> {
