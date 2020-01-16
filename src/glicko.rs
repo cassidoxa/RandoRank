@@ -1,16 +1,15 @@
-use std::{collections::HashMap, f64::NAN as NaN};
+use std::{
+    collections::HashMap,
+    f64::{consts::PI as pi, NAN as NaN},
+};
 
 use chrono::NaiveDateTime;
+use itertools::Itertools;
 use pyo3::prelude::*;
 
 use crate::{math, GlickoError};
 
-const GLICKO_CONVERSION: f64 = 173.7178;
-const _WIN: f64 = 1.0;
-const _DRAW: f64 = 0.5;
-const _LOSS: f64 = 0.0;
-const EPSILON: f64 = 0.000_000_001;
-
+#[derive(Clone, Copy, Debug)]
 struct GlickoConstants {
     glicko_tau: f64,
     multi_slope: f64,
@@ -21,21 +20,11 @@ struct GlickoConstants {
     initial_volatility: f64,
 }
 
-impl GlickoConstants {
-    fn unrated(&self) -> GlickoRating {
-        GlickoRating {
-            rating: self.initial_rating,
-            deviation: self.initial_deviation,
-            volatility: self.initial_volatility,
-        }
-    }
-}
-
 impl Default for GlickoConstants {
     fn default() -> Self {
         GlickoConstants {
             glicko_tau: 0.2,
-            multi_slope: 0.0008,
+            multi_slope: 0.008,
             multi_cutoff: 8,
             norm_factor: 1.3,
             initial_rating: 1500.0,
@@ -68,45 +57,50 @@ impl GlickoRating {
             volatility: self.volatility,
         }
     }
+
+    fn decay_score(&mut self, inactive_periods: u32) {
+        let decayed_score: f64 =
+            self.rating - ((self.deviation.ln().powi(2) + (inactive_periods as f64).sqrt()) / 2f64);
+        self.rating = decayed_score;
+    }
 }
 
+#[derive(Debug)]
 struct Player {
     glicko_rating: GlickoRating,
     variance: f64,
     delta: f64,
+    inactive_periods: u32,
     races: Vec<RaceResult>,
 }
 
+#[derive(Debug)]
 struct Opponent {
-    time: u32,
-    score: f64,
+    glicko_score: f64,
+    normed_score: f64,
     rating: GlickoRating,
 }
 
-// struct MultiRace<'a> {
-//     num_finishers: u32,
-//     datetime: Option<NaiveDateTime>,
-//     results: HashMap<&'a str, u32>,
-// }
-
+#[derive(Debug)]
 struct RaceResult {
     datetime: Option<NaiveDateTime>,
-    player: (u32, f64),
-    oppenent: Opponent,
+    race_size: u32,
+    player: (f64, f64), // (glicko_score, normed_score)
+    opponent: Opponent,
 }
 
 #[pyclass(module = "randorank")]
-pub struct Period {
+pub struct MultiPeriod {
     players: HashMap<String, Player>,
     glicko_constants: GlickoConstants,
 }
 
 #[pymethods]
-impl Period {
+impl MultiPeriod {
     #[new]
     fn new(obj: &PyRawObject) {
         obj.init({
-            Period {
+            MultiPeriod {
                 players: HashMap::with_capacity(100),
                 glicko_constants: GlickoConstants::default(),
             }
@@ -156,6 +150,7 @@ impl Period {
                 glicko_rating: glicko,
                 variance: players[p]["variance"],
                 delta: players[p]["delta"],
+                inactive_periods: players[p]["inactive_periods"] as u32,
                 races: Vec::with_capacity(20),
             };
 
@@ -164,20 +159,45 @@ impl Period {
 
         Ok(())
     }
-    // take one race, split into 1v1s,
-    fn add_race(&mut self, race: HashMap<String, Option<u32>>) -> PyResult<()> {
+
+    fn add_race(&mut self, race: HashMap<String, f64>) -> PyResult<()> {
         validate_race(&race)?;
-        // add any new racers with default values
         self.add_new_players(&race)?;
+        let num_finishers = race
+            .values()
+            .filter(|x| x.is_nan() == false)
+            .map(|x| *x)
+            .collect::<Vec<f64>>()
+            .len();
         let normed_race = math::normalize_race(&race, &self.glicko_constants.norm_factor);
-        // create 1v1s with time and normed score, add to Vec owned by player struct
+        self.make_pairings(&normed_race, num_finishers)?;
+
         Ok(())
     }
-    //fn rank_players(&self) -> HashMap<HashMap<&str, f64>>{}
+
+    fn rank(&self) -> PyResult<HashMap<&str, HashMap<&str, f64>>> {
+        let mut rankings_dict: HashMap<&str, HashMap<&str, f64>> =
+            HashMap::with_capacity(self.players.len());
+        for (name, player) in self.players.iter() {
+            if player.races.len() == 0 {
+                // player hasn't raced. only change RD and apply
+                let player_dict = self.process_inactive(player);
+                rankings_dict.insert(name, player_dict);
+            } else {
+                // player has raced, process their 1v1s and add them to the
+                // rankings hash map
+                println!("{}", name);
+                let player_dict = self.process_1v1s(player);
+                rankings_dict.insert(name, player_dict);
+            }
+        }
+
+        Ok(rankings_dict)
+    }
 }
 
 // private methods not accessible from python
-impl Period {
+impl MultiPeriod {
     fn new_unrated(&mut self, name: &str) {
         let initial_glicko = GlickoRating {
             rating: self.glicko_constants.initial_rating,
@@ -185,15 +205,16 @@ impl Period {
             volatility: self.glicko_constants.initial_volatility,
         };
         let new_player = Player {
-            glicko_rating: self.glicko_constants.unrated(),
+            glicko_rating: initial_glicko,
             variance: 0.0,
             delta: 0.0,
+            inactive_periods: 0,
             races: Vec::with_capacity(20),
         };
         self.players.insert(name.to_string(), new_player);
     }
 
-    fn add_new_players(&mut self, race: &HashMap<String, Option<u32>>) -> Result<(), GlickoError> {
+    fn add_new_players(&mut self, race: &HashMap<String, f64>) -> Result<(), GlickoError> {
         let new_racers: Vec<&String> = race
             .keys()
             .filter(|x| self.players.contains_key(x.as_str()) == false)
@@ -203,6 +224,127 @@ impl Period {
         }
 
         Ok(())
+    }
+
+    fn make_pairings(
+        &mut self,
+        race: &HashMap<String, (f64, f64)>,
+        num_finishers: usize,
+    ) -> Result<(), GlickoError> {
+        let players: Vec<&String> = race.keys().collect();
+        let perms = players.iter().permutations(2);
+        let score = |p: f64, o: f64| -> f64 {
+            if p < o {
+                1f64
+            } else if p > o {
+                0f64
+            } else {
+                0.5f64
+            }
+        };
+
+        for pair in perms {
+            let opponent = Opponent {
+                glicko_score: score(race[*pair[1]].0, race[*pair[0]].0),
+                normed_score: race[*pair[1]].1,
+                rating: self.players[*pair[1]].glicko_rating,
+            };
+            let race_result = RaceResult {
+                datetime: None,
+                race_size: num_finishers as u32,
+                player: (score(race[*pair[0]].0, race[*pair[1]].0), race[*pair[0]].1),
+                opponent: opponent,
+            };
+            self.players
+                .entry(pair[0].to_string())
+                .and_modify(|x| x.races.push(race_result));
+        }
+        Ok(())
+    }
+
+    fn process_1v1s(&self, player: &Player) -> HashMap<&str, f64> {
+        let mut player_dict: HashMap<&str, f64> = HashMap::with_capacity(6);
+        let initial_rating = self.glicko_constants.initial_rating;
+        let mut converted_rating = player.glicko_rating.convert_to(initial_rating);
+        let mut v_inv = sanitize_v(player.variance.recip());
+        let mut delta = player.delta;
+        let tau = self.glicko_constants.glicko_tau;
+
+        for r in &player.races {
+            let ndiff: f64 = (r.player.1 - r.opponent.normed_score).abs();
+            let size = r.race_size;
+            let slope = self.glicko_constants.multi_slope;
+            let opp = r.opponent.rating.convert_to(initial_rating);
+            let multi_factor =
+                (1f64 - (slope * (1f64 - ndiff).powi(size as i32))) * (1f64 / (1f64 - slope));
+            let mut weight = 1f64 / (1f64 + (3f64 * opp.deviation.powi(2) / pi.powi(2))).sqrt();
+            if size >= self.glicko_constants.multi_cutoff {
+                weight = weight * multi_factor;
+            }
+            let expected_score =
+                1f64 / (1f64 + (-weight * (converted_rating.rating - opp.rating)).exp());
+            v_inv += weight.powi(2) * expected_score * (1f64 - expected_score);
+            delta += weight * (r.player.0 as f64 - expected_score);
+        }
+        if v_inv != 0f64 {
+            let var = 1f64 / v_inv;
+            let change = var * delta;
+            let new_sigma = math::get_sigma(
+                tau,
+                converted_rating.deviation,
+                converted_rating.volatility,
+                change,
+                var,
+            );
+            let phi_star: f64 = (converted_rating.deviation.powi(2) + new_sigma.powi(2)).sqrt();
+            converted_rating.deviation = 1f64 / ((1f64 / phi_star.powi(2)) + (1f64 / var)).sqrt();
+            converted_rating.rating =
+                converted_rating.rating + converted_rating.deviation.powi(2) * delta;
+            converted_rating.volatility = new_sigma;
+            println!("{:?}", converted_rating);
+            let new_rating = converted_rating.convert_from(initial_rating);
+
+            player_dict.insert("rating", new_rating.rating);
+            player_dict.insert("deviation", new_rating.deviation);
+            player_dict.insert("volatility", new_rating.volatility);
+            player_dict.insert("variance", var);
+            player_dict.insert("delta", delta);
+            player_dict.insert("inactive_periods", 0f64);
+        } else {
+            let var = 0f64;
+            let new_rating = converted_rating.convert_from(initial_rating);
+
+            player_dict.insert("rating", new_rating.rating);
+            player_dict.insert("deviation", new_rating.deviation);
+            player_dict.insert("volatility", new_rating.volatility);
+            player_dict.insert("variance", var);
+            player_dict.insert("delta", delta);
+            player_dict.insert("inactive_periods", 0f64);
+        }
+
+        player_dict
+    }
+
+    fn process_inactive(&self, player: &Player) -> HashMap<&str, f64> {
+        let mut player_dict: HashMap<&str, f64> = HashMap::with_capacity(6);
+        let initial_rating = self.glicko_constants.initial_rating;
+        let mut converted_rating = player.glicko_rating.convert_to(initial_rating);
+        let inactive_periods: u32 = player.inactive_periods + 1;
+        let phi_star: f64 =
+            (converted_rating.deviation.powi(2) + converted_rating.volatility.powi(2)).sqrt();
+        converted_rating.deviation = phi_star;
+        let mut new_rating = converted_rating.convert_from(initial_rating);
+        if player.inactive_periods > 1 {
+            new_rating.decay_score(player.inactive_periods);
+        }
+        player_dict.insert("rating", new_rating.rating);
+        player_dict.insert("deviation", new_rating.deviation);
+        player_dict.insert("volatility", new_rating.volatility);
+        player_dict.insert("variance", 0f64);
+        player_dict.insert("delta", 0f64);
+        player_dict.insert("inactive_periods", inactive_periods as f64);
+
+        player_dict
     }
 }
 
@@ -235,7 +377,14 @@ fn validate_constants(constants: &HashMap<&str, f64>) -> PyResult<()> {
 }
 
 fn validate_players(players: &HashMap<String, HashMap<String, f64>>) -> PyResult<()> {
-    const REQUIRED_KEYS: [&str; 5] = ["rating", "deviation", "volatility", "variance", "delta"];
+    const REQUIRED_KEYS: [&str; 6] = [
+        "rating",
+        "deviation",
+        "volatility",
+        "variance",
+        "delta",
+        "inactive_periods",
+    ];
 
     for m in players.values() {
         if REQUIRED_KEYS.iter().all(|&k| m.contains_key(k)) == false {
@@ -253,7 +402,7 @@ fn validate_players(players: &HashMap<String, HashMap<String, f64>>) -> PyResult
     Ok(())
 }
 
-fn validate_race(race: &HashMap<String, Option<u32>>) -> PyResult<()> {
+fn validate_race(race: &HashMap<String, f64>) -> PyResult<()> {
     // confirm that the race has:
     // 1. At least two players
     // 2. At least one non-forfeiting player
@@ -264,11 +413,7 @@ fn validate_race(race: &HashMap<String, Option<u32>>) -> PyResult<()> {
         ));
     }
 
-    let times: Vec<u32> = race
-        .values()
-        .filter(|x| x.is_some())
-        .map(|&x| x.unwrap())
-        .collect();
+    let times: Vec<&f64> = race.values().filter(|x| x.is_nan() == false).collect();
     if times.len() < 1 {
         return Err(GlickoError::py_err(
             "Invalid race passed to method: Less than one finisher",
@@ -276,4 +421,12 @@ fn validate_race(race: &HashMap<String, Option<u32>>) -> PyResult<()> {
     }
 
     Ok(())
+}
+
+fn sanitize_v(v: f64) -> f64 {
+    if v.is_finite() {
+        v
+    } else {
+        0f64
+    }
 }

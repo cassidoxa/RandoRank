@@ -1,18 +1,22 @@
-use std::{collections::HashMap, f64::NAN as NaN};
+use std::{
+    cmp::Ordering,
+    cmp::Ordering::{Equal, Greater, Less},
+    collections::HashMap,
+};
 
 pub fn normalize_race(
-    race: &HashMap<String, Option<u32>>,
+    race: &HashMap<String, f64>,
     norm_factor: &f64,
-) -> HashMap<String, (u32, f64)> {
-    let mut times: Vec<u32> = race
+) -> HashMap<String, (f64, f64)> {
+    let mut times: Vec<f64> = race
         .values()
-        .filter(|x| x.is_some())
-        .map(|&x| x.unwrap())
+        .filter(|x| x.is_nan() == false)
+        .map(|x| *x)
         .collect();
-    times.sort();
+    times.sort_by(|&x, &y| time_cmp(x, y));
 
-    let quartile_1: f64 = percentile_of(times.as_slice(), 25f64);
-    let quartile_3: f64 = percentile_of(times.as_slice(), 75f64);
+    let quartile_1: f64 = percentile_of(&times.as_slice(), 25f64);
+    let quartile_3: f64 = percentile_of(&times.as_slice(), 75f64);
     let iqr = quartile_3 - quartile_1;
     let norm_min: f64 = quartile_1 + (iqr * norm_factor);
     let norm_max: f64 = times[0] as f64;
@@ -25,16 +29,23 @@ pub fn normalize_race(
         }
     };
 
-    let mut normed_race: HashMap<String, (u32, f64)> = HashMap::with_capacity(race.len());
+    let a = |x: f64| -> f64 {
+        match x.is_nan() {
+            true => times[times.len() - 1] + 1200f64,
+            false => x,
+        }
+    };
+
+    let mut normed_race: HashMap<String, (f64, f64)> = HashMap::with_capacity(race.len());
     for (key, value) in race.iter() {
-        let new_value: u32 = value.unwrap_or(times[times.len() - 1] + 10);
-        normed_race.insert(key.to_string(), (new_value, n(new_value as f64)));
+        let new_value: f64 = a(*value);
+        normed_race.insert(key.to_string(), (new_value, n(new_value)));
     }
-    println!("{:?}", normed_race);
+
     normed_race
 }
 
-fn get_sigma(tau: f64, phi: f64, sigma: f64, delta: f64, v: f64) -> f64 {
+pub fn get_sigma(tau: f64, phi: f64, sigma: f64, delta: f64, v: f64) -> f64 {
     const EPSILON: f64 = 0.000_000_001;
 
     let alpha: f64 = (sigma.powi(2)).ln();
@@ -84,16 +95,30 @@ fn get_sigma(tau: f64, phi: f64, sigma: f64, delta: f64, v: f64) -> f64 {
     (a / 2f64).exp()
 }
 
-fn percentile_of(sorted_times: &[u32], pct: f64) -> f64 {
+fn percentile_of(sorted_times: &[f64], pct: f64) -> f64 {
     if sorted_times.len() == 1 {
-        return sorted_times[0] as f64;
+        return sorted_times[0];
     }
-    let length = (sorted_times.len() - 1) as f64;
-    let rank = (pct / 100f64) * length;
+    let length = sorted_times.len() - 1;
+    let rank = (pct / 100f64) * length as f64;
     let lrank = rank.floor();
     let d = rank - lrank;
     let i = lrank as usize;
-    let lo = sorted_times[i] as f64;
-    let hi = sorted_times[i + 1] as f64;
+    let lo = sorted_times[i];
+    let hi = sorted_times[i + 1];
     lo + (hi - lo) * d
+}
+
+fn time_cmp(x: f64, y: f64) -> Ordering {
+    if y.is_nan() {
+        Less
+    } else if x.is_nan() {
+        Greater
+    } else if x < y {
+        Less
+    } else if x == y {
+        Equal
+    } else {
+        Greater
+    }
 }

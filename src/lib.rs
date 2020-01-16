@@ -6,7 +6,7 @@ mod math;
 
 #[pymodule]
 fn randorank(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<glicko::Period>()?;
+    m.add_class::<glicko::MultiPeriod>()?;
     Ok(())
 }
 
