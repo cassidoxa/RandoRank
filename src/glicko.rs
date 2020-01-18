@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    f64::{consts::PI as pi, NAN as NaN},
-};
+use std::{collections::HashMap, f64::consts::PI as pi};
 
 use chrono::NaiveDateTime;
 use itertools::Itertools;
@@ -89,7 +86,7 @@ struct RaceResult {
     opponent: Opponent,
 }
 
-#[pyclass(module = "randorank")]
+#[pyclass]
 pub struct MultiPeriod {
     players: HashMap<String, Player>,
     glicko_constants: GlickoConstants,
@@ -123,7 +120,6 @@ impl MultiPeriod {
         Ok(())
     }
 
-    #[getter(constants)]
     #[cfg_attr(rustfmt, rustfmt_skip)]
     fn get_constants(&self) -> PyResult<HashMap<&str, f64>> {
         let mut constants: HashMap<&str, f64> = HashMap::with_capacity(6);
@@ -175,7 +171,8 @@ impl MultiPeriod {
         Ok(())
     }
 
-    fn rank(&self) -> PyResult<HashMap<&str, HashMap<&str, f64>>> {
+    #[args(end = true)]
+    fn rank(&self, end: bool) -> PyResult<HashMap<&str, HashMap<&str, f64>>> {
         let mut rankings_dict: HashMap<&str, HashMap<&str, f64>> =
             HashMap::with_capacity(self.players.len());
         for (name, player) in self.players.iter() {
@@ -186,8 +183,7 @@ impl MultiPeriod {
             } else {
                 // player has raced, process their 1v1s and add them to the
                 // rankings hash map
-                println!("{}", name);
-                let player_dict = self.process_1v1s(player);
+                let player_dict = self.process_1v1s(player, end);
                 rankings_dict.insert(name, player_dict);
             }
         }
@@ -262,7 +258,7 @@ impl MultiPeriod {
         Ok(())
     }
 
-    fn process_1v1s(&self, player: &Player) -> HashMap<&str, f64> {
+    fn process_1v1s(&self, player: &Player, end: bool) -> HashMap<&str, f64> {
         let mut player_dict: HashMap<&str, f64> = HashMap::with_capacity(6);
         let initial_rating = self.glicko_constants.initial_rating;
         let mut converted_rating = player.glicko_rating.convert_to(initial_rating);
@@ -301,15 +297,20 @@ impl MultiPeriod {
             converted_rating.rating =
                 converted_rating.rating + converted_rating.deviation.powi(2) * delta;
             converted_rating.volatility = new_sigma;
-            println!("{:?}", converted_rating);
             let new_rating = converted_rating.convert_from(initial_rating);
 
             player_dict.insert("rating", new_rating.rating);
             player_dict.insert("deviation", new_rating.deviation);
-            player_dict.insert("volatility", new_rating.volatility);
-            player_dict.insert("variance", var);
-            player_dict.insert("delta", delta);
             player_dict.insert("inactive_periods", 0f64);
+            if end {
+                player_dict.insert("volatility", new_rating.volatility);
+                player_dict.insert("variance", 0f64);
+                player_dict.insert("delta", 0f64);
+            } else {
+                player_dict.insert("volatility", player.glicko_rating.volatility);
+                player_dict.insert("variance", var);
+                player_dict.insert("delta", delta);
+            }
         } else {
             let var = 0f64;
             let new_rating = converted_rating.convert_from(initial_rating);
@@ -317,9 +318,16 @@ impl MultiPeriod {
             player_dict.insert("rating", new_rating.rating);
             player_dict.insert("deviation", new_rating.deviation);
             player_dict.insert("volatility", new_rating.volatility);
-            player_dict.insert("variance", var);
-            player_dict.insert("delta", delta);
             player_dict.insert("inactive_periods", 0f64);
+            if end {
+                player_dict.insert("volatility", new_rating.volatility);
+                player_dict.insert("variance", 0f64);
+                player_dict.insert("delta", 0f64);
+            } else {
+                player_dict.insert("volatility", player.glicko_rating.volatility);
+                player_dict.insert("variance", var);
+                player_dict.insert("delta", delta);
+            }
         }
 
         player_dict
@@ -334,7 +342,7 @@ impl MultiPeriod {
             (converted_rating.deviation.powi(2) + converted_rating.volatility.powi(2)).sqrt();
         converted_rating.deviation = phi_star;
         let mut new_rating = converted_rating.convert_from(initial_rating);
-        if player.inactive_periods > 1 {
+        if player.inactive_periods > 0 {
             new_rating.decay_score(player.inactive_periods);
         }
         player_dict.insert("rating", new_rating.rating);
