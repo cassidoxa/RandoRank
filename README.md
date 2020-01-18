@@ -87,8 +87,8 @@ important that you always use players' pre-period variables and do not pass
 a ranking dict back to the same instance. You can, however, continue to add
 races and call `rank()` again.
 
-If you want to serialize results mid-period and get rankings for players
-who have played in new races for that period, you can pass `False` to the
-`rank()` method, instantiate a new MultiPeriod, use `add_players()` to add
-only runners who have participated in the new races, add the races, then
-`rank()` to get the new values for those players.
+Currently the library is unable to calculate only portions of a period if
+you want to, for example, serialize mid-period data then add only some new
+races. To get mid-period data you need to add all the races and rank the whole
+period up to that point. Fortunately, this process should be pretty quick, less
+than a second to add and rank a set of already transformed races for a period.
