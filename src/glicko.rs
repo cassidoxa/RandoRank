@@ -272,7 +272,7 @@ impl MultiPeriod {
             let slope = self.glicko_constants.multi_slope;
             let opp = r.opponent.rating.convert_to(initial_rating);
             let multi_factor =
-                (1f64 - (slope * (1f64 - ndiff).powi(size as i32))) * (1f64 / (1f64 - slope));
+                (1f64 - (slope * (size as f64).powf(1f64 - ndiff))) * (1f64 / (1f64 - slope));
             let mut weight = 1f64 / (1f64 + (3f64 * opp.deviation.powi(2) / pi.powi(2))).sqrt();
             if size >= self.glicko_constants.multi_cutoff {
                 weight = weight * multi_factor;
