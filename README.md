@@ -9,12 +9,15 @@ The multiplayer implementation was partially borrowed from [ms2300's implementat
 
 You can install RandoRank as a python package with pip by running
 `pip install randorank`. The first thing you'll want to do is determine a
-period length(e.g. four weeks.) To use this library to rank randomizer players,
-you can simply instantiate a `MultiPeriod` class, set the system variables with
-the `add_constants()` method, add races with the `add_race()` method, then
-export a dictionary of players with their ranking with the `rank()` method.
-When a period has concluded, you can feed this dict into a new MultiPeriod
-instance with the `add_players()` method.
+period length(e.g. four weeks) and a set of constants to use for your
+game/category.
+
+To use this library to rank randomizer players, you can instantiate a
+`MultiPeriod` class, set the system variables with the `add_constants()`
+method, add races with the `add_race()` method, then export a dictionary of
+players with their ranking with the `rank()` method. When a period has
+concluded, you can feed this dict into a new MultiPeriod instance with the
+`add_players()` method and continue ranking.
 
 ## Setting Constants and Multiplayer Glicko Implementation
 
@@ -42,14 +45,22 @@ to use the multiplayer implementation. Below that, it will use the stock
 Glicko formula. The normalization factor is used to determine a "floor" time
 for the race and is game-specific. The formula for scoring a normalized race
 is first\_quartile + (IQR * norm\_factor). Times in between are assigned a
-value between 0 and 1, 1 being the first place finisher. Since this formula is less
-accurate with less racers, we use the cutoff to prevent it from skewing final
-rankings. The slope is used later as part of the formula for determining a
-1v1's weight.
+value between 0 and 1, 1 being the first place finisher. To determine a
+normalization factor for your game or category, you should experiment with
+different values for multiple races and use your best judgement to figure out
+which value gives the best floor time. Since this formula is less accurate
+with less racers, we use the cutoff to prevent it from skewing final rankings.
+The slope is used later as part of the formula for determining a 1v1's weight.
 
 In races above the cutoff, we take the original weight and multiply it by
 the result of the following: 
-`1 - (multi_slope * (size ** (1 - abs(normed_score_diff)))) * (1 / (1 - multi_slope))`
+```
+let normed_diff = the absolute value of the difference between the two players'
+normalized scores
+
+1 - (multi_slope * (size ** (1 - abs(normed_diff)))) * (1 / (1 - multi_slope))
+```
+
 This generally means that the bigger the race, and the closer the two runners'
 finish times, the lower the weight for their 1v1. But no matter the race size,
 top finishers' scores against the very bottom will remain the same.
@@ -83,12 +94,14 @@ MultiPeriod instance.
 # Practical Considerations
 
 If you want to continuously calculate rankings throughout a period, it's
-important that you always use players' pre-period variables and do not pass
-a ranking dict back to the same instance. You can, however, continue to add
-races and call `rank()` again.
+important that you always use players' pre-period variables, re-calculate the
+entire period by adding all the races again, and do not pass a ranking dict
+back to the same instance. You can, however, continue to add races and call
+`rank()` again.
 
-Currently the library is unable to calculate only portions of a period if
-you want to, for example, serialize mid-period data then add only some new
-races. To get mid-period data you need to add all the races and rank the whole
-period up to that point. Fortunately, this process should be pretty quick, less
-than a second to add and rank a set of already transformed races for a period.
+*(Experimental)* If you want to calculate new mid-period scores given a set
+of new races that haven't been added yet, say from a database for example, 
+you can pass `False` to the `rank()` method, instantiate a new MultiPeriod,
+combine the **pre-period** rating, deviation and volatility with the **new**
+delta and variance values, add only the players who have participated in the
+new races with `add_players()` then the races themselves with `add_races()`.
