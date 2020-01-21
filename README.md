@@ -31,8 +31,8 @@ example_constants = {'tau': .02,
                      'multi_cutoff': 8,
                      'norm_factor': 1.3
                      'initial_rating': 1500,
-                     'initial_deviation': 50,
-                     'initial_volatility': .01}
+                     'initial_deviation': 250,
+                     'initial_volatility': .09}
 ```
 **tau** is the Glicko system constant. For randomizer races, it should be set
 low, around .02. **multi\_slope**, **multi\_cutoff**, and **norm\_factor** are
@@ -64,6 +64,12 @@ normalized scores
 This generally means that the bigger the race, and the closer the two runners'
 finish times, the lower the weight for their 1v1. But no matter the race size,
 top finishers' scores against the very bottom will remain the same.
+
+To determine the best variables for your game or category, you'll want to look
+at the sorted results over several periods as well as the distribution of final
+ratings. Make sure the final rankings look reasonably accurate that. The
+distribution of scores should be somewhere between normal and skewed right.
+Experiment using different values for the same data set.
 
 ## Adding Races
 
