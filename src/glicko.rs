@@ -104,7 +104,6 @@ impl MultiPeriod {
         })
     }
 
-    #[setter]
     fn set_constants(&mut self, constants: HashMap<&str, f64>) -> PyResult<()> {
         validate_constants(&constants)?;
         let new_constants: GlickoConstants = GlickoConstants {
@@ -127,7 +126,44 @@ impl MultiPeriod {
         Ok(())
     }
 
+    fn set_initial_deviation(&mut self, deviation: f64) -> PyResult<()> {
+        self.glicko_constants.initial_deviation = deviation;
+
+        Ok(())
+    }
+
+    fn set_initial_volatility(&mut self, vol: f64) -> PyResult<()> {
+        self.glicko_constants.initial_volatility = vol;
+
+        Ok(())
+    }
+
+    fn set_glicko_tau(&mut self, tau: f64) -> PyResult<()> {
+        self.glicko_constants.glicko_tau = tau;
+
+        Ok(())
+    }
+
+    fn set_norm_factor(&mut self, factor: f64) -> PyResult<()> {
+        self.glicko_constants.norm_factor = factor;
+
+        Ok(())
+    }
+
+    fn set_multi_slope(&mut self, slope: f64) -> PyResult<()> {
+        self.glicko_constants.multi_slope = slope;
+
+        Ok(())
+    }
+
+    fn set_multi_cutoff(&mut self, cutoff: f64) -> PyResult<()> {
+        self.glicko_constants.multi_cutoff = cutoff as u32;
+
+        Ok(())
+    }
+
     #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[getter]
     fn get_constants(&self) -> PyResult<HashMap<&str, f64>> {
         let mut constants: HashMap<&str, f64> = HashMap::with_capacity(6);
         constants.insert("tau", self.glicko_constants.glicko_tau);
@@ -139,6 +175,13 @@ impl MultiPeriod {
         constants.insert("initial_volatility", self.glicko_constants.initial_volatility,);
 
         Ok(constants)
+    }
+
+    #[getter]
+    fn get_players(&self) -> Vec<&String> {
+        let players: Vec<&String> = self.players.keys().collect();
+
+        players
     }
 
     fn add_players(&mut self, players: HashMap<String, HashMap<String, f64>>) -> PyResult<()> {

@@ -34,6 +34,8 @@ example_constants = {'tau': .02,
                      'initial_deviation': 300,
                      'initial_volatility': .22}
 ```
+a MultiPeriod has an attribute `MultiPeriod.constants` with these values as a dict.
+There are also `set_[constant name]` methods for each of these individually.
 **tau** is the Glicko system constant. For randomizer races, it should be set
 low, around .02. **multi\_slope**, **multi\_cutoff**, and **norm\_factor** are
 part of the multiplayer implementation, which divides races into a series of

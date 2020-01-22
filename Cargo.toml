@@ -1,6 +1,6 @@
 [package]
 name = "RandoRank"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["cassidoxa <cassidymoen@gmx.com>"]
 edition = "2018"
 
@@ -40,7 +40,7 @@ classifier = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     ]
-# keywords = ["ranking", "score", "randomizer", "speedrunning"]
+# keywords = ["ranking", "scoring", "randomizer", "speedrunning"]
 project-url = ["https://github.com/cassidoxa/RandoRank"]
 maintainer = "cassidoxa cassidymoen#2979"
 maintainer-email = "cassidymoen@gmx.com"
