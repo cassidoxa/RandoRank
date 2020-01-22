@@ -31,8 +31,8 @@ example_constants = {'tau': .02,
                      'multi_cutoff': 8,
                      'norm_factor': 1.3
                      'initial_rating': 1500,
-                     'initial_deviation': 250,
-                     'initial_volatility': .20}
+                     'initial_deviation': 300,
+                     'initial_volatility': .22}
 ```
 **tau** is the Glicko system constant. For randomizer races, it should be set
 low, around .02. **multi\_slope**, **multi\_cutoff**, and **norm\_factor** are

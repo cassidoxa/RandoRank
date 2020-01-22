@@ -25,8 +25,8 @@ impl Default for GlickoConstants {
             multi_cutoff: 8,
             norm_factor: 1.3,
             initial_rating: 1500.0,
-            initial_deviation: 250.0,
-            initial_volatility: 0.20,
+            initial_deviation: 300.0,
+            initial_volatility: 0.22,
         }
     }
 }
@@ -104,6 +104,7 @@ impl MultiPeriod {
         })
     }
 
+    #[setter]
     fn set_constants(&mut self, constants: HashMap<&str, f64>) -> PyResult<()> {
         validate_constants(&constants)?;
         let new_constants: GlickoConstants = GlickoConstants {
@@ -116,6 +117,12 @@ impl MultiPeriod {
             initial_volatility: constants["initial_volatility"],
         };
         self.glicko_constants = new_constants;
+
+        Ok(())
+    }
+
+    fn set_initial_rating(&mut self, rating: f64) -> PyResult<()> {
+        self.glicko_constants.initial_rating = rating;
 
         Ok(())
     }
