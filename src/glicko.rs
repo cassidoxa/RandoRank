@@ -25,8 +25,8 @@ impl Default for GlickoConstants {
             multi_cutoff: 8,
             norm_factor: 1.3,
             initial_rating: 1500.0,
-            initial_deviation: 50.0,
-            initial_volatility: 0.01,
+            initial_deviation: 250.0,
+            initial_volatility: 0.20,
         }
     }
 }

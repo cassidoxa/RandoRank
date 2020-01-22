@@ -46,7 +46,7 @@ pub fn normalize_race(
 }
 
 pub fn get_sigma(tau: f64, phi: f64, sigma: f64, delta: f64, v: f64) -> f64 {
-    const EPSILON: f64 = 0.000_000_001;
+    const EPSILON: f64 = 0.000_000_01;
 
     let alpha: f64 = (sigma.powi(2)).ln();
     let f = |x: f64| -> f64 {
