@@ -206,17 +206,19 @@ impl MultiPeriod {
         Ok(())
     }
 
-    fn add_race(&mut self, race: HashMap<String, f64>) -> PyResult<()> {
-        validate_race(&race)?;
-        self.add_new_players(&race)?;
-        let num_finishers = race
-            .values()
-            .filter(|x| x.is_nan() == false)
-            .map(|x| *x)
-            .collect::<Vec<f64>>()
-            .len();
-        let normed_race = math::normalize_race(&race, &self.glicko_constants.norm_factor);
-        self.make_pairings(&normed_race, num_finishers)?;
+    fn add_races(&mut self, races: Vec<HashMap<String, f64>>) -> PyResult<()> {
+        for race in races.iter() {
+            validate_race(&race)?;
+            self.add_new_players(&race)?;
+            let num_finishers = race
+                .values()
+                .filter(|x| x.is_nan() == false)
+                .map(|x| *x)
+                .collect::<Vec<f64>>()
+                .len();
+            let normed_race = math::normalize_race(&race, &self.glicko_constants.norm_factor);
+            self.make_pairings(&normed_race, num_finishers)?;
+        }
 
         Ok(())
     }
@@ -464,7 +466,7 @@ fn validate_race(race: &HashMap<String, f64>) -> PyResult<()> {
     // confirm that the race has:
     // 1. At least two players
     // 2. At least one non-forfeiting player
-
+    println!("fuck");
     if race.len() < 2 {
         return Err(GlickoError::py_err(
             "Invalid race passed to method: Less than two racers",

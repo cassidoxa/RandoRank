@@ -14,7 +14,7 @@ game/category.
 
 To use this library to rank randomizer players, you can instantiate a
 `MultiPeriod` class, set the system variables with the `add_constants()`
-method, add races with the `add_race()` method, then export a dictionary of
+method, add races with the `add_races()` method, then export a dictionary of
 players with their ranking with the `rank()` method. When a period has
 concluded, you can feed this dict into a new MultiPeriod instance with the
 `add_players()` method and continue ranking.
@@ -75,20 +75,27 @@ Experiment using different values for the same data set.
 
 ## Adding Races
 
-Races are passed to the `add_race()` method as a dictionary with names as keys
-and times (in seconds) as values. If a runner does not finish a race, their
-value should be NaN. You can use `nan` values in python by importing the type
-from the math module(`from math import nan`). Suppose you want to add a race
-with three runners, one of whom forfeited. You would pass this dictionary:
+Races are passed to the `add_races()` method as a list of dictionaries with
+names as keys and times (in seconds) as values. If a runner does not finish a
+race, their value should be NaN. You can set NaN values in python by importing
+the type from the math module(`from math import nan`). Suppose you want to add
+a race with three runners, one of whom forfeited. You would pass this dictionary:
 
 ```python
+from math import nan
+
+example_period = MultiPeriod()
 example_race = {'runner 1': 1563,
                 'runner 2': 1620,
                 'runner 3': nan}
+example_period.add_races([example_race])
 ```
 It's important that you convert all non-finishers to NaN and don't use a number
 like 0. NaN is a special numerical type indicating that the value is "not a
-number."
+number." One way to do this is applying a dictionary comprehension:
+```python
+filtered_example_race = {k: math.nan if v is None else v for k, v in race.items()}
+```
 
 ## End of Period Rankings
 
@@ -107,9 +114,23 @@ entire period by adding all the races again, and do not pass a ranking dict
 back to the same instance. You can, however, continue to add races and call
 `rank()` again.
 
-*(Experimental)* If you want to calculate new mid-period scores given a set
-of new races that haven't been added yet, say from a database for example, 
-you can pass `False` to the `rank()` method, instantiate a new MultiPeriod,
-combine the **pre-period** rating, deviation and volatility with the **new**
-delta and variance values, add only the players who have participated in the
-new races with `add_players()` then the races themselves with `add_races()`.
+*(Experimental)* If you want to calculate new mid-period with a dict of mid-
+period rankings and some races you'd like to add to that period you can: 
+
+1. Pass `end=False` to the `rank()` method to get mid-period data including each
+player's variance and delta.
+2. Instantiate a new MultiPeriod.
+3. Take the runners who have participated only in the race(s) you want to add.
+4. Combine their **pre-period** rating, deviation and volatility with their
+**mid-period** variance and delta values in a dictionary.
+5. Pass this dict with only the new runners to the `add_players()` method of
+the new period.
+6. Add the new races with `add_races()` then `rank(end=True)` (the default
+argument to `end` is `True`.)
+
+This will produce a rankings dict containing values for the runners in the
+added races. You can add them back to the first ranking dict, but make sure to
+zero out the delta and variance values any time you are calculating from the
+beginning of the period as these numbers contain information about races
+which was already calculated, so you will end up counting some races more than
+once if you don't.

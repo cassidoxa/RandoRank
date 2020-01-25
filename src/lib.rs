@@ -5,8 +5,9 @@ mod glicko;
 mod math;
 
 #[pymodule]
-fn randorank(_py: Python, m: &PyModule) -> PyResult<()> {
+fn randorank(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<glicko::MultiPeriod>()?;
+    m.add("GlickoError", py.get_type::<GlickoError>())?;
     Ok(())
 }
 
