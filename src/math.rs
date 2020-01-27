@@ -2,12 +2,14 @@ use std::{
     cmp::Ordering,
     cmp::Ordering::{Equal, Greater, Less},
     collections::HashMap,
+    f64::NAN,
 };
 
 pub fn normalize_race(
     race: &HashMap<String, f64>,
     norm_factor: &f64,
 ) -> HashMap<String, (f64, f64)> {
+    // returns a tuple containing (time, normed score)
     let mut times: Vec<f64> = race
         .values()
         .filter(|x| x.is_nan() == false)
@@ -25,7 +27,7 @@ pub fn normalize_race(
         match (x - norm_min) / (norm_max - norm_min) {
             y if y > 0f64 => y,
             y if y <= 0f64 => 0f64,
-            _ => 0f64,
+            _ => NAN,
         }
     };
 

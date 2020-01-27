@@ -1,8 +1,12 @@
 [package]
 name = "RandoRank"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["cassidoxa <cassidymoen@gmx.com>"]
 edition = "2018"
+readme = "README.md"
+repository = "https://github.com/cassidoxa/RandoRank"
+keywords = ["ranking", "scoring", "randomizer", "speedrunning", "glicko"]
+license = "MIT"
 
 [lib]
 name = "randorank"
@@ -40,7 +44,6 @@ classifier = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     ]
-# keywords = ["ranking", "scoring", "randomizer", "speedrunning"]
 project-url = ["GitHub Repository", "https://github.com/cassidoxa/RandoRank"]
 maintainer = "cassidoxa cassidymoen#2979"
 maintainer-email = "cassidymoen@gmx.com"

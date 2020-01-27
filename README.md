@@ -30,6 +30,7 @@ example_constants = {'tau': .02,
                      'multi_slope': .008,
                      'multi_cutoff': 8,
                      'norm_factor': 1.3
+                     'victory_margin': 600
                      'initial_rating': 1500,
                      'initial_deviation': 300,
                      'initial_volatility': .22}
@@ -62,15 +63,20 @@ normalized scores
 
 1 - (multi_slope * (size ** (1 - abs(normed_diff)))) * (1 / (1 - multi_slope))
 ```
-
 This generally means that the bigger the race, and the closer the two runners'
 finish times, the lower the weight for their 1v1. But no matter the race size,
 top finishers' scores against the very bottom will remain the same.
 
+For races below the cutoff, we use the "victory margin" in seconds to calculate
+a weight for each 1v1. When this value is 600 seconds, or 10 minutes, a
+different in times of ten minutes or more gives full weight to the 1v1. Below
+that, the difference is scaled for a weight between 100 and 85%. The closer the
+finish, the less weight is given to the 1v1.
+
 To determine the best variables for your game or category, you'll want to look
 at the sorted results over several periods as well as the distribution of final
 ratings. Make sure the final rankings look reasonably accurate that. The
-distribution of scores should be somewhere between normal and skewed right.
+distribution of scores should be somewhere between normal and right-skewed.
 Experiment using different values for the same data set.
 
 ## Adding Races
@@ -105,14 +111,6 @@ variance, and delta for the end of the period. The latter three values can be
 discarded if you're done ranking players. If you want to continue ranking over
 multiple periods, you can pass this to the `add_players()` method of a new
 MultiPeriod instance.
-
-# Practical Considerations
-
-If you want to continuously calculate rankings throughout a period, it's
-important that you always use players' pre-period variables, re-calculate the
-entire period by adding all the races again, and do not pass a ranking dict
-back to the same instance. You can, however, continue to add races and call
-`rank()` again.
 
 *(Experimental)* If you want to calculate new mid-period with a dict of mid-
 period rankings and some races you'd like to add to that period you can: 

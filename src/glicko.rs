@@ -1,4 +1,7 @@
-use std::{collections::HashMap, f64::consts::PI as pi};
+use std::{
+    collections::HashMap,
+    f64::{consts::PI as pi, NAN},
+};
 
 use chrono::NaiveDateTime;
 use itertools::Itertools;
@@ -7,26 +10,28 @@ use pyo3::prelude::*;
 use crate::{math, GlickoError};
 
 #[derive(Clone, Copy, Debug)]
-struct GlickoConstants {
+struct Constants {
     glicko_tau: f64,
     multi_slope: f64,
     multi_cutoff: u32,
     norm_factor: f64,
+    victory_margin: u32,
     initial_rating: f64,
     initial_deviation: f64,
     initial_volatility: f64,
 }
 
-impl Default for GlickoConstants {
+impl Default for Constants {
     fn default() -> Self {
-        GlickoConstants {
+        Constants {
             glicko_tau: 0.2,
             multi_slope: 0.008,
             multi_cutoff: 8,
             norm_factor: 1.3,
+            victory_margin: 600,
             initial_rating: 1500.0,
             initial_deviation: 300.0,
-            initial_volatility: 0.22,
+            initial_volatility: 0.24,
         }
     }
 }
@@ -73,6 +78,7 @@ struct Player {
 
 #[derive(Debug)]
 struct Opponent {
+    time: f64,
     glicko_score: f64,
     normed_score: f64,
     rating: GlickoRating,
@@ -82,14 +88,14 @@ struct Opponent {
 struct RaceResult {
     datetime: Option<NaiveDateTime>,
     race_size: u32,
-    player: (f64, f64), // (glicko_score, normed_score)
+    player: (f64, f64, f64), // (time, glicko_score, normed_score)
     opponent: Opponent,
 }
 
 #[pyclass]
 pub struct MultiPeriod {
     players: HashMap<String, Player>,
-    glicko_constants: GlickoConstants,
+    constants: Constants,
 }
 
 #[pymethods]
@@ -99,65 +105,72 @@ impl MultiPeriod {
         obj.init({
             MultiPeriod {
                 players: HashMap::with_capacity(100),
-                glicko_constants: GlickoConstants::default(),
+                constants: Constants::default(),
             }
         })
     }
 
     fn set_constants(&mut self, constants: HashMap<&str, f64>) -> PyResult<()> {
         validate_constants(&constants)?;
-        let new_constants: GlickoConstants = GlickoConstants {
+        let new_constants: Constants = Constants {
             glicko_tau: constants["tau"],
             multi_slope: constants["multi_slope"],
             multi_cutoff: constants["multi_cutoff"] as u32,
             norm_factor: constants["norm_factor"],
+            victory_margin: constants["victory_margin"] as u32,
             initial_rating: constants["initial_rating"],
             initial_deviation: constants["initial_deviation"],
             initial_volatility: constants["initial_volatility"],
         };
-        self.glicko_constants = new_constants;
+        self.constants = new_constants;
 
         Ok(())
     }
 
     fn set_initial_rating(&mut self, rating: f64) -> PyResult<()> {
-        self.glicko_constants.initial_rating = rating;
+        self.constants.initial_rating = rating;
 
         Ok(())
     }
 
     fn set_initial_deviation(&mut self, deviation: f64) -> PyResult<()> {
-        self.glicko_constants.initial_deviation = deviation;
+        self.constants.initial_deviation = deviation;
 
         Ok(())
     }
 
     fn set_initial_volatility(&mut self, vol: f64) -> PyResult<()> {
-        self.glicko_constants.initial_volatility = vol;
+        self.constants.initial_volatility = vol;
 
         Ok(())
     }
 
     fn set_glicko_tau(&mut self, tau: f64) -> PyResult<()> {
-        self.glicko_constants.glicko_tau = tau;
+        self.constants.glicko_tau = tau;
 
         Ok(())
     }
 
     fn set_norm_factor(&mut self, factor: f64) -> PyResult<()> {
-        self.glicko_constants.norm_factor = factor;
+        self.constants.norm_factor = factor;
+
+        Ok(())
+    }
+
+    fn set_victory_margin(&mut self, margin: f64) -> PyResult<()> {
+        self.constants.victory_margin = margin as u32;
 
         Ok(())
     }
 
     fn set_multi_slope(&mut self, slope: f64) -> PyResult<()> {
-        self.glicko_constants.multi_slope = slope;
+        self.constants.multi_slope = slope;
 
         Ok(())
     }
 
     fn set_multi_cutoff(&mut self, cutoff: f64) -> PyResult<()> {
-        self.glicko_constants.multi_cutoff = cutoff as u32;
+        self.constants.multi_cutoff = cutoff as u32;
 
         Ok(())
     }
@@ -166,13 +179,14 @@ impl MultiPeriod {
     #[getter]
     fn get_constants(&self) -> PyResult<HashMap<&str, f64>> {
         let mut constants: HashMap<&str, f64> = HashMap::with_capacity(6);
-        constants.insert("tau", self.glicko_constants.glicko_tau);
-        constants.insert("multi_slope", self.glicko_constants.multi_slope);
-        constants.insert("multi_cutoff", self.glicko_constants.multi_cutoff as f64);
-        constants.insert("norm_factor", self.glicko_constants.norm_factor);
-        constants.insert("initial_rating", self.glicko_constants.initial_rating);
-        constants.insert("initial_deviation", self.glicko_constants.initial_deviation);
-        constants.insert("initial_volatility", self.glicko_constants.initial_volatility,);
+        constants.insert("tau", self.constants.glicko_tau);
+        constants.insert("multi_slope", self.constants.multi_slope);
+        constants.insert("multi_cutoff", self.constants.multi_cutoff as f64);
+        constants.insert("norm_factor", self.constants.norm_factor);
+        constants.insert("victory_margin", self.constants.victory_margin as f64);
+        constants.insert("initial_rating", self.constants.initial_rating);
+        constants.insert("initial_deviation", self.constants.initial_deviation);
+        constants.insert("initial_volatility", self.constants.initial_volatility,);
 
         Ok(constants)
     }
@@ -216,7 +230,7 @@ impl MultiPeriod {
                 .map(|x| *x)
                 .collect::<Vec<f64>>()
                 .len();
-            let normed_race = math::normalize_race(&race, &self.glicko_constants.norm_factor);
+            let normed_race = math::normalize_race(&race, &self.constants.norm_factor);
             self.make_pairings(&normed_race, num_finishers)?;
         }
 
@@ -248,9 +262,9 @@ impl MultiPeriod {
 impl MultiPeriod {
     fn new_unrated(&mut self, name: &str) {
         let initial_glicko = GlickoRating {
-            rating: self.glicko_constants.initial_rating,
-            deviation: self.glicko_constants.initial_deviation,
-            volatility: self.glicko_constants.initial_volatility,
+            rating: self.constants.initial_rating,
+            deviation: self.constants.initial_deviation,
+            volatility: self.constants.initial_volatility,
         };
         let new_player = Player {
             glicko_rating: initial_glicko,
@@ -290,49 +304,92 @@ impl MultiPeriod {
                 0.5f64
             }
         };
-
-        for pair in perms {
-            let opponent = Opponent {
-                glicko_score: score(race[*pair[1]].0, race[*pair[0]].0),
-                normed_score: race[*pair[1]].1,
-                rating: self.players[*pair[1]].glicko_rating,
-            };
-            let race_result = RaceResult {
-                datetime: None,
-                race_size: num_finishers as u32,
-                player: (score(race[*pair[0]].0, race[*pair[1]].0), race[*pair[0]].1),
-                opponent: opponent,
-            };
-            self.players
-                .entry(pair[0].to_string())
-                .and_modify(|x| x.races.push(race_result));
+        if num_finishers > self.constants.multi_cutoff as usize {
+            for pair in perms {
+                let opponent = Opponent {
+                    time: race[*pair[1]].0,
+                    glicko_score: score(race[*pair[1]].0, race[*pair[0]].0),
+                    normed_score: race[*pair[1]].1,
+                    rating: self.players[*pair[1]].glicko_rating,
+                };
+                let race_result = RaceResult {
+                    datetime: None,
+                    race_size: num_finishers as u32,
+                    player: (
+                        race[*pair[0]].0,
+                        score(race[*pair[0]].0, race[*pair[1]].0),
+                        race[*pair[0]].1,
+                    ),
+                    opponent: opponent,
+                };
+                self.players
+                    .entry(pair[0].to_string())
+                    .and_modify(|x| x.races.push(race_result));
+            }
+        } else {
+            for pair in perms {
+                let opponent = Opponent {
+                    time: race[*pair[1]].0,
+                    glicko_score: score(race[*pair[1]].0, race[*pair[0]].0),
+                    normed_score: race[*pair[1]].1,
+                    rating: self.players[*pair[1]].glicko_rating,
+                };
+                let race_result = RaceResult {
+                    datetime: None,
+                    race_size: num_finishers as u32,
+                    player: (
+                        race[*pair[0]].0,
+                        score(race[*pair[0]].0, race[*pair[1]].0),
+                        race[*pair[0]].1,
+                    ),
+                    opponent: opponent,
+                };
+                self.players
+                    .entry(pair[0].to_string())
+                    .and_modify(|x| x.races.push(race_result));
+            }
         }
         Ok(())
     }
 
     fn process_1v1s(&self, player: &Player, end: bool) -> HashMap<&str, f64> {
         let mut player_dict: HashMap<&str, f64> = HashMap::with_capacity(6);
-        let initial_rating = self.glicko_constants.initial_rating;
+        let initial_rating = self.constants.initial_rating;
         let mut converted_rating = player.glicko_rating.convert_to(initial_rating);
         let mut v_inv = sanitize_v(player.variance.recip());
         let mut delta = player.delta;
-        let tau = self.glicko_constants.glicko_tau;
+        let tau = self.constants.glicko_tau;
 
         for r in &player.races {
             let ndiff: f64 = (r.player.1 - r.opponent.normed_score).abs();
+            let tdiff: f64 = (r.player.0 - r.opponent.time).abs();
             let size = r.race_size;
-            let slope = self.glicko_constants.multi_slope;
+            let slope = self.constants.multi_slope;
+            let margin = self.constants.victory_margin as f64;
+            let single_norm = |x: f64| -> f64 {
+                match (1f64 - 0.90) * (x / margin) + 0.90 {
+                    y if (y < 1f64 && y > 0.90) => y,
+                    y if y >= 1f64 => 1f64,
+                    y if y <= 0.90 => 0.90,
+                    _ => NAN,
+                }
+            };
+
             let opp = r.opponent.rating.convert_to(initial_rating);
             let multi_factor =
                 (1f64 - (slope * (size as f64).powf(1f64 - ndiff))) * (1f64 / (1f64 - slope));
             let mut weight = 1f64 / (1f64 + (3f64 * opp.deviation.powi(2) / pi.powi(2))).sqrt();
-            if size >= self.glicko_constants.multi_cutoff {
+            if size > self.constants.multi_cutoff {
                 weight = weight * multi_factor;
+            } else {
+                // if we're not scoring a race over the cutoff, any victory at or over the
+                // margin counts with full weight and an exact tie is worth 90% weight
+                weight = weight * single_norm(tdiff);
             }
             let expected_score =
                 1f64 / (1f64 + (-weight * (converted_rating.rating - opp.rating)).exp());
             v_inv += weight.powi(2) * expected_score * (1f64 - expected_score);
-            delta += weight * (r.player.0 as f64 - expected_score);
+            delta += weight * (r.player.1 as f64 - expected_score);
         }
         if v_inv != 0f64 {
             let var = 1f64 / v_inv;
@@ -387,7 +444,7 @@ impl MultiPeriod {
 
     fn process_inactive(&self, player: &Player) -> HashMap<&str, f64> {
         let mut player_dict: HashMap<&str, f64> = HashMap::with_capacity(6);
-        let initial_rating = self.glicko_constants.initial_rating;
+        let initial_rating = self.constants.initial_rating;
         let mut converted_rating = player.glicko_rating.convert_to(initial_rating);
         let inactive_periods: u32 = player.inactive_periods + 1;
         let phi_star: f64 =
@@ -409,11 +466,12 @@ impl MultiPeriod {
 }
 
 fn validate_constants(constants: &HashMap<&str, f64>) -> PyResult<()> {
-    const REQUIRED_CONSTANTS: [&str; 7] = [
+    const REQUIRED_CONSTANTS: [&str; 8] = [
         "tau",
         "multi_slope",
         "multi_cutoff",
         "norm_factor",
+        "victory_margin",
         "initial_rating",
         "initial_deviation",
         "initial_volatility",
@@ -466,7 +524,6 @@ fn validate_race(race: &HashMap<String, f64>) -> PyResult<()> {
     // confirm that the race has:
     // 1. At least two players
     // 2. At least one non-forfeiting player
-    println!("fuck");
     if race.len() < 2 {
         return Err(GlickoError::py_err(
             "Invalid race passed to method: Less than two racers",
