@@ -132,3 +132,10 @@ zero out the delta and variance values any time you are calculating from the
 beginning of the period as these numbers contain information about races
 which was already calculated, so you will end up counting some races more than
 once if you don't.
+
+# Tests
+
+This library uses pytest on the python side. You can install pytest with pip:
+`pip install pytest`, build the library such that it can be imported from the
+main directory (either using cargo and moving the .so/.dll into this directory
+or using `maturin develop`), and run `pytest`.

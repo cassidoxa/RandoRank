@@ -43,7 +43,6 @@ classifier = [
     "Development Status :: 4 - Beta",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
     ]
-project-url = ["GitHub Repository", "https://github.com/cassidoxa/RandoRank"]
-maintainer = "cassidoxa cassidymoen#2979"
-maintainer-email = "cassidymoen@gmx.com"
