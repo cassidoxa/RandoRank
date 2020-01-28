@@ -1,0 +1,19 @@
+TODO (in no particular order)
+
+1. A Season class that the user can add all races to and adjust period length
+and system constants on the fly.
+
+2. Store multiplayer races in the MultiPeriod class somehow. Changing a system
+constant should trigger a re-creation of 1v1s with the new variable(s).
+
+3. Further research and improvement of the multiplayer changes to Glicko,
+possibly add different ranking systems into the library
+
+4. A suite of functions to help the user more conveniently decide on constants
+for a game or category.
+
+5. Better test coverage for both Rust and Python code
+
+5.a. A test that ensures a distribution of scores has something close to a
+normal distribution/that changes to the ranking system don't end up completely
+messing up the distribution for a known good data set?
